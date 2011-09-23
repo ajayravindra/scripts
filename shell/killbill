@@ -1,0 +1,134 @@
+#!/usr/bin/env sh
+
+DEBUG=0
+ECHO ()
+{
+    if [ "x$DEBUG" = "x1" ] ; then
+        echo $1
+    fi
+}
+
+unset rflag; unset kflag; unset nflag;
+
+while getopts k:r:n:f:h opts
+do
+    case "$opts" in
+    k)  ECHO "khit"; kflag=1; wtime="$OPTARG";;
+    r)  ECHO "rhit"; rflag=1; wtime="$OPTARG";;
+    n)  ECHO "nhit"; nflag=1; mailto="$OPTARG";;
+    f)  ECHO "fhit"; fflag=1; mailfile="$OPTARG";;
+    h)  echo "usage: $0 [-rk time] [-n mailto(s)] [-f mailfile] cmd [args..]"
+        echo "options:"
+        echo "-k <timeout> : kill after timeout"
+        echo "-r <timeout> : run at least until timeout, else notify"
+        echo "-n <mailtos> : notify by mail (also causes '-k' to not kill)"
+        echo "-f <mailfile>: mail this file in notification"
+        echo "-h           : print this help menu"
+        exit 1;;
+    esac
+done
+shift `expr $OPTIND - 1`
+
+ECHO "kflag: $kflag"
+ECHO "rflag: $rflag"
+ECHO "wtime: $wtime"
+ECHO "nflag: $nflag"
+ECHO "mailto: $mailto"
+
+ECHO x$rflag
+ECHO x$kflag
+
+# must have '-k' or '-r'
+[ "x$rflag" = "x" ] && [ "x$kflag" = "x" ] && {
+    echo "use at least one of 'k' or 'r' flags"
+    exit 1
+}
+
+# must not have both '-k' and '-r'
+[ "x$rflag" = "x1" ] && [ "x$kflag" = "x1" ] && {
+    echo "use either 'k' or 'r' flags, not both"
+    exit 1
+}
+
+# if 'r' is selected, then '-n' is a must
+[ "x$rflag" = "x1" ] && [ "x$nflag" = "x" ] && {
+    echo "with '-r', you must also use '-n'"
+    exit 1
+}
+
+# if notify, but no mailfile, then create default mailfile
+[ "x$nflag" = "x1" ] && [ "x$fflag" = "x" ] && {
+    ECHO "no mail file, creating default"
+    mailfile=/tmp/killbill.mailfile.$$
+    echo "--killbill activity report--" >> $mailfile
+    echo "host: `hostname`" >> $mailfile
+    echo "command: \"$@\"" >> $mailfile
+}
+
+# execute cmd in background and capture PID
+ECHO "executing in background mode: $@"
+$@ &
+p=$!
+
+ECHO "monitoring process: $p"
+
+# if process ends before the PID is captured, then exit killbill with retcode=2
+[ "$p" = "0" ] && {
+    echo "process has already exited"
+    exit 2
+}
+
+
+(
+    ECHO "waiting for $wtime"
+    sleep $wtime;
+
+    ECHO "waking up"
+
+    # check if the background process still exists
+    ps | grep -q $p | grep -v grep
+    terminated=$?
+    
+    ECHO "terminated: $terminated"
+
+    # if rflag is set, and process has terminated, then notify and exit
+    [ "x$rflag" = "x1" ] && [ "$terminated" = "1" ] && {
+        echo "rflag set, but process has terminated. sending notification."
+        mailx -s "killbill warning: process terminated immaturely" \
+                 "$mailto" < $mailfile
+
+        # delete temp mailfile, if one was created
+        [ "x$fflag" = "x" ] && /bin/rm -f $mailfile
+
+        exit 3
+    }
+
+    # if kflag is set, and process has not terminated, then notify/kill
+    [ "x$kflag" = "x1" ] && [ "$terminated" = "0" ] && {
+        echo "kflag set, but process has not terminated."
+        # if notify, then send mail and exit
+        [ "x$nflag" = "x1" ] && {
+            echo "sending notification."
+            mailx -s "killbill warning: process did not exit!" \
+                     "$mailto" < $mailfile
+
+            # delete temp mailfile, if one was created
+            [ "x$fflag" = "x" ] && /bin/rm -f $mailfile
+
+            exit
+        }
+
+        # if not notify, then kill
+        echo "terminating process"
+        kill -9 $p &
+        kpid=$!
+        # wait for process to terminate; and capture exit code
+        wait $p
+        retcode=$?
+        kill -HUP $kpid 2>/tmp/killbill.log
+        exit $retcode
+    }
+
+    ECHO "no if conditions were hit"
+
+) & 2>/tmp/killbill.log
