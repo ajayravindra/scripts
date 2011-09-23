@@ -1,0 +1,40 @@
+#!/usr/bin/env sh
+
+while getopts n o
+do
+    case "$o" in
+    n)  export nflag=1;;
+    esac
+done
+shift `expr $OPTIND - 1`
+
+export tmpargs="$*"
+
+
+perl -ane '
+BEGIN {
+    $linecount = 0;
+    $sum = 0;
+    @col = split(/\s+/, $ENV{'tmpargs'});
+    if (scalar(@col) eq 0) { push (@col, '1'); }
+    
+    foreach $c (@col) {
+        $sum{$c} = 0;
+    }
+}
+
+next if (scalar(@F) eq 0);
+$linecount++;
+foreach $c (@col) {
+    $sum{$c} += $F[$c - 1];
+}
+
+END {
+    print "$linecount:\t" if ($ENV{'nflag'} eq "1");
+    foreach $c (@col) {
+        print $sum{$c}."\t";
+    }
+    print "\n";
+
+}
+'

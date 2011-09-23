@@ -1,0 +1,54 @@
+#!/usr/bin/python
+import sys
+from optparse import OptionParser
+
+parser = OptionParser(
+    usage='%prog [-] [-np] [file ...]')
+parser.add_option ('-n', dest='num_parts', type='int',
+    default='5', help='num parts (choose 2 or more) [default=5]')
+parser.add_option ('-p', dest='prefix', type='string',
+    default='part_', help='prefix [default="part_"]')
+
+(options, args) = parser.parse_args(sys.argv[1:])
+
+if options.num_parts < 2:
+    parser.error('num parts should be >= 2')
+
+infile_d = []
+if len(args) == 0:
+    parser.error ('insufficient args')
+
+ofd = {}
+
+ofile_count = 0
+while ofile_count < options.num_parts:
+    fname = options.prefix + str(ofile_count+1)
+    ofd[ofile_count] = file (fname, 'w')
+    ofile_count += 1
+
+rrobin = 0
+for ifilename in args:
+    if ifilename == '-':
+        infile = sys.stdin
+        print 'reading from stdin. Hit <CTRL-D> to end.'
+    else:
+        infile = file(ifilename, 'r')
+
+    for line in infile:
+        line = line.strip()
+        if not line:
+            continue
+        ofd[rrobin].write(line + '\n')
+        rrobin += 1
+        if rrobin >= options.num_parts:
+            rrobin = 0
+
+    if infile != sys.stdin:
+        infile.close()
+
+fcount = 0
+while fcount < options.num_parts:
+    ofd[fcount].close()
+    fcount += 1
+
+# end of file
