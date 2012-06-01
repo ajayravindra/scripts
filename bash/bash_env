@@ -1,0 +1,2 @@
+set -o vi                 # get vim on command-line
+PATH=$PATH:$HOME/.rvm/bin # Add RVM to PATH for scripting
