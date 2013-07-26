@@ -13,7 +13,7 @@ set smartcase
 
 set visualbell
 set backspace=2
-set history=500
+set history=5000
 
 syntax enable
 filetype plugin on
